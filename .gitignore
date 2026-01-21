@@ -1,0 +1,17 @@
+# Environment
+.env
+.env.*
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build artifacts
+github-actions-mcp
+
+# OS
+.DS_Store
+Thumbs.db
+.claude/settings.local.json
