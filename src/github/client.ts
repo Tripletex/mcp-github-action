@@ -10,6 +10,7 @@ import type {
   RateLimitInfo,
 } from "./types.ts";
 import { tokenResolver } from "./token-resolver.ts";
+import { configResolver } from "./config.ts";
 
 const GITHUB_API_BASE = "https://api.github.com";
 
@@ -98,7 +99,7 @@ export class GitHubClient {
         const resetDate = new Date(this.rateLimitInfo.reset * 1000);
         throw new Error(
           `Rate limit exceeded. Resets at ${resetDate.toISOString()}. ` +
-            `Consider setting GITHUB_TOKEN for higher limits.`
+            `Consider setting GITHUB_TOKEN for higher limits.`,
         );
       }
       throw new Error(`GitHub API error: ${error.message}`);
@@ -108,19 +109,112 @@ export class GitHubClient {
   }
 
   /**
-   * List all releases for a repository
+   * List all releases for a repository (unfiltered)
    */
-  listReleases(owner: string, repo: string): Promise<GitHubRelease[]> {
+  private listReleasesRaw(
+    owner: string,
+    repo: string,
+  ): Promise<GitHubRelease[]> {
     const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/releases`;
     return this.fetch<GitHubRelease[]>(url);
   }
 
   /**
-   * Get the latest release for a repository
+   * List all releases for a repository, filtered by minimum age if configured
    */
-  getLatestRelease(owner: string, repo: string): Promise<GitHubRelease> {
+  async listReleases(owner: string, repo: string): Promise<GitHubRelease[]> {
+    const releases = await this.listReleasesRaw(owner, repo);
+    return this.filterReleasesByAge(releases);
+  }
+
+  /**
+   * Get the age of a release in days
+   */
+  private getReleaseAgeDays(publishedAt: string | null): number | null {
+    if (!publishedAt) {
+      return null;
+    }
+    const publishedDate = new Date(publishedAt);
+    const now = new Date();
+    return (now.getTime() - publishedDate.getTime()) / (1000 * 60 * 60 * 24);
+  }
+
+  /**
+   * Check if a release is old enough based on MIN_RELEASE_AGE_DAYS
+   */
+  private isReleaseOldEnough(publishedAt: string | null): boolean {
+    const minAgeDays = configResolver.getMinReleaseAgeDays();
+
+    // If no minimum age configured, all releases are valid
+    if (minAgeDays === 0) {
+      return true;
+    }
+
+    // If no published date, we can't determine age - be conservative and include it
+    if (!publishedAt) {
+      return true;
+    }
+
+    const ageDays = this.getReleaseAgeDays(publishedAt);
+    return ageDays !== null && ageDays >= minAgeDays;
+  }
+
+  /**
+   * Filter releases by minimum age configuration
+   */
+  private filterReleasesByAge(releases: GitHubRelease[]): GitHubRelease[] {
+    const minAgeDays = configResolver.getMinReleaseAgeDays();
+    if (minAgeDays === 0) {
+      return releases;
+    }
+
+    return releases.filter((release) =>
+      this.isReleaseOldEnough(release.published_at)
+    );
+  }
+
+  /**
+   * Get the latest release for a repository (unfiltered)
+   */
+  private getLatestReleaseRaw(
+    owner: string,
+    repo: string,
+  ): Promise<GitHubRelease> {
     const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/releases/latest`;
     return this.fetch<GitHubRelease>(url);
+  }
+
+  /**
+   * Get the latest release for a repository that meets the minimum age requirement.
+   * If MIN_RELEASE_AGE_DAYS is set and the latest release is too new,
+   * falls back to finding an older release that meets the requirement.
+   */
+  async getLatestRelease(owner: string, repo: string): Promise<GitHubRelease> {
+    const latestRelease = await this.getLatestReleaseRaw(owner, repo);
+
+    // If no minimum age configured or release is old enough, return it
+    if (this.isReleaseOldEnough(latestRelease.published_at)) {
+      return latestRelease;
+    }
+
+    // Latest release is too new, find an older one
+    const releases = await this.listReleasesRaw(owner, repo);
+    const eligibleReleases = this.filterReleasesByAge(
+      releases.filter((r) => !r.draft && !r.prerelease),
+    );
+
+    if (eligibleReleases.length === 0) {
+      const minAge = configResolver.getMinReleaseAgeDays();
+      const releaseAge = this.getReleaseAgeDays(latestRelease.published_at);
+      throw new Error(
+        `No releases found that are at least ${minAge} days old. ` +
+          `Latest release "${latestRelease.tag_name}" is ${
+            releaseAge?.toFixed(1)
+          } days old.`,
+      );
+    }
+
+    return eligibleReleases[0];
   }
 
   /**
@@ -129,9 +223,10 @@ export class GitHubClient {
   getReleaseByTag(
     owner: string,
     repo: string,
-    tag: string
+    tag: string,
   ): Promise<GitHubRelease> {
-    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/releases/tags/${tag}`;
+    const url =
+      `${GITHUB_API_BASE}/repos/${owner}/${repo}/releases/tags/${tag}`;
     return this.fetch<GitHubRelease>(url);
   }
 
@@ -158,7 +253,7 @@ export class GitHubClient {
   async getCommitShaForTag(
     owner: string,
     repo: string,
-    tag: string
+    tag: string,
   ): Promise<string> {
     const ref = await this.getTagRef(owner, repo, tag);
 
@@ -185,7 +280,7 @@ export class GitHubClient {
   async findReleaseByVersionPrefix(
     owner: string,
     repo: string,
-    versionPrefix: string
+    versionPrefix: string,
   ): Promise<GitHubRelease | null> {
     const releases = await this.listReleases(owner, repo);
 

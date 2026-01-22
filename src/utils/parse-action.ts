@@ -31,7 +31,7 @@ export function parseAction(action: string): ParsedAction {
   if (!match) {
     throw new Error(
       `Invalid action reference: "${action}". ` +
-        `Expected format: owner/repo or owner/repo@version`
+        `Expected format: owner/repo or owner/repo@version`,
     );
   }
 
@@ -54,7 +54,7 @@ export function formatSecureActionReference(
   owner: string,
   repo: string,
   commitSha: string,
-  version: string
+  version: string,
 ): string {
   return `${owner}/${repo}@${commitSha} # ${version}`;
 }

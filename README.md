@@ -1,6 +1,7 @@
 # MCP GitHub Actions
 
-A Deno-based MCP (Model Context Protocol) service that helps you securely reference GitHub Actions by providing:
+A Deno-based MCP (Model Context Protocol) service that helps you securely
+reference GitHub Actions by providing:
 
 - Latest version lookup for any GitHub Action
 - Commit SHA retrieval for specific version tags
@@ -9,7 +10,9 @@ A Deno-based MCP (Model Context Protocol) service that helps you securely refere
 
 ## Why Use This?
 
-GitHub Actions referenced by tag (e.g., `actions/checkout@v4`) can be vulnerable to supply chain attacks if the tag is moved to point to malicious code. This MCP service helps you:
+GitHub Actions referenced by tag (e.g., `actions/checkout@v4`) can be vulnerable
+to supply chain attacks if the tag is moved to point to malicious code. This MCP
+service helps you:
 
 1. **Find the commit SHA** for any action version
 2. **Check if a release is immutable** (protected from modification)
@@ -77,7 +80,8 @@ docker run --rm -i -e GITHUB_TOKEN ghcr.io/tripletex/mcp-github-action:latest
         "run",
         "--rm",
         "-i",
-        "-e", "GITHUB_TOKEN",
+        "-e",
+        "GITHUB_TOKEN",
         "ghcr.io/tripletex/mcp-github-action:latest"
       ],
       "env": {
@@ -121,10 +125,10 @@ Once configured, ask Claude to look up GitHub Actions:
 
 ### Parameters
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `action` | string | Yes | Action reference (e.g., `actions/checkout` or `actions/checkout@v4`) |
-| `include_all_versions` | boolean | No | List all available versions (default: false) |
+| Parameter              | Type    | Required | Description                                                          |
+| ---------------------- | ------- | -------- | -------------------------------------------------------------------- |
+| `action`               | string  | Yes      | Action reference (e.g., `actions/checkout` or `actions/checkout@v4`) |
+| `include_all_versions` | boolean | No       | List all available versions (default: false)                         |
 
 ### Example Output
 
@@ -161,7 +165,8 @@ Set the `GITHUB_TOKEN` environment variable:
 
 ### Multi-Organization Support
 
-For accessing private repositories across multiple organizations, configure org-specific tokens:
+For accessing private repositories across multiple organizations, configure
+org-specific tokens:
 
 ```bash
 # Org-specific tokens (format: GITHUB_TOKEN_<ORG_NAME>)
@@ -172,19 +177,22 @@ GITHUB_TOKEN=ghp_zzz...                    # Fallback for public repos
 ```
 
 **Token resolution order:**
+
 1. Org-specific token (`GITHUB_TOKEN_<ORG>`)
 2. Fallback token (`GITHUB_TOKEN`)
 3. Unauthenticated (public repos only)
 
 **Supported token types and required permissions:**
 
-| Token Type | Required Permissions | Notes |
-|------------|---------------------|-------|
-| Fine-grained PAT | `Contents: Read` + `Metadata: Read` | Recommended - scoped to specific repos/orgs |
-| Classic PAT | `repo` scope | Broader access - use only if fine-grained isn't suitable |
-| GitHub App | `Contents: Read` | Recommended for organizations |
+| Token Type       | Required Permissions                | Notes                                                    |
+| ---------------- | ----------------------------------- | -------------------------------------------------------- |
+| Fine-grained PAT | `Contents: Read` + `Metadata: Read` | Recommended - scoped to specific repos/orgs              |
+| Classic PAT      | `repo` scope                        | Broader access - use only if fine-grained isn't suitable |
+| GitHub App       | `Contents: Read`                    | Recommended for organizations                            |
 
-> **Note:** For private repositories, the token must have read access to repository contents. Without proper permissions, you'll receive a 404 error when looking up private actions.
+> **Note:** For private repositories, the token must have read access to
+> repository contents. Without proper permissions, you'll receive a 404 error
+> when looking up private actions.
 
 **Example Claude Desktop config with multi-org:**
 
@@ -203,6 +211,64 @@ GITHUB_TOKEN=ghp_zzz...                    # Fallback for public repos
         "GITHUB_TOKEN_MY_ORG": "ghs_xxx...",
         "GITHUB_TOKEN_OTHER_ORG": "ghs_yyy...",
         "GITHUB_TOKEN": "ghp_zzz..."
+      }
+    }
+  }
+}
+```
+
+## Configuration
+
+### Minimum Release Age
+
+To avoid using releases that are too new (which may contain undiscovered bugs or
+be part of a supply chain attack), you can configure a minimum age requirement:
+
+```bash
+# Skip releases published within the last 5 days
+MIN_RELEASE_AGE_DAYS=5
+```
+
+When set, the service will:
+
+1. Skip the absolute latest release if it's newer than the threshold
+2. Return the most recent release that meets the age requirement
+3. Display the release age in the output
+4. Add a note in security notes when filtering is active
+
+**Example with minimum age:**
+
+```
+Action: actions/checkout
+
+Latest Version: v4.2.1
+  Commit SHA: abc123...
+  Immutable: Yes
+  Published: 2024-10-15T10:00:00Z (7 days ago)
+
+Security Notes:
+  - Minimum release age filter active: only considering releases at least 5 days old.
+```
+
+If no release meets the age requirement, an error will be returned indicating
+the latest release's age.
+
+**Claude Desktop config with minimum age:**
+
+```json
+{
+  "mcpServers": {
+    "github-actions": {
+      "command": "deno",
+      "args": [
+        "run",
+        "--allow-net",
+        "--allow-env",
+        "/path/to/mcp-github-actions/main.ts"
+      ],
+      "env": {
+        "GITHUB_TOKEN": "ghp_xxx...",
+        "MIN_RELEASE_AGE_DAYS": "5"
       }
     }
   }

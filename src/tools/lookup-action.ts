@@ -3,6 +3,7 @@
  */
 
 import { GitHubClient } from "../github/client.ts";
+import { configResolver } from "../github/config.ts";
 import type { GitHubRelease } from "../github/types.ts";
 import {
   formatSecureActionReference,
@@ -22,12 +23,12 @@ async function releaseToVersionInfo(
   client: GitHubClient,
   owner: string,
   repo: string,
-  release: GitHubRelease
+  release: GitHubRelease,
 ): Promise<VersionInfo> {
   const commitSha = await client.getCommitShaForTag(
     owner,
     repo,
-    release.tag_name
+    release.tag_name,
   );
 
   return {
@@ -45,35 +46,68 @@ async function releaseToVersionInfo(
 function generateSecurityNotes(
   versionInfo: VersionInfo,
   resolvedFromPrefix: boolean,
-  requestedVersion?: string
+  requestedVersion?: string,
 ): string[] {
   const notes: string[] = [];
 
   if (versionInfo.immutable) {
     notes.push(
-      "This release is immutable - the tag and assets are protected from modification."
+      "This release is immutable - the tag and assets are protected from modification.",
     );
   } else {
     notes.push(
-      "WARNING: This release is NOT immutable. The tag could potentially be moved to a different commit."
+      "WARNING: This release is NOT immutable. The tag could potentially be moved to a different commit.",
     );
     notes.push(
-      "Using the SHA-pinned reference provides protection against tag tampering."
+      "Using the SHA-pinned reference provides protection against tag tampering.",
     );
   }
 
   if (resolvedFromPrefix && requestedVersion) {
     notes.push(
       `Version "${requestedVersion}" was resolved to "${versionInfo.tag}". ` +
-        `Consider pinning to the specific version for reproducibility.`
+        `Consider pinning to the specific version for reproducibility.`,
+    );
+  }
+
+  // Add note about minimum release age filtering if enabled
+  const minAgeDays = configResolver.getMinReleaseAgeDays();
+  if (minAgeDays > 0) {
+    notes.push(
+      `Minimum release age filter active: only considering releases at least ${minAgeDays} days old.`,
     );
   }
 
   notes.push(
-    "SHA-pinned references prevent supply chain attacks by ensuring you always use the exact same code."
+    "SHA-pinned references prevent supply chain attacks by ensuring you always use the exact same code.",
   );
 
   return notes;
+}
+
+/**
+ * Get the age of a release in days
+ */
+function getReleaseAgeDays(publishedAt: string | null): number | null {
+  if (!publishedAt) {
+    return null;
+  }
+  const publishedDate = new Date(publishedAt);
+  const now = new Date();
+  return (now.getTime() - publishedDate.getTime()) / (1000 * 60 * 60 * 24);
+}
+
+/**
+ * Format age in days to a human-readable string
+ */
+function formatAge(ageDays: number): string {
+  if (ageDays < 1) {
+    const hours = Math.round(ageDays * 24);
+    return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
+  } else {
+    const days = Math.round(ageDays);
+    return `${days} day${days !== 1 ? "s" : ""} ago`;
+  }
 }
 
 /**
@@ -90,18 +124,24 @@ export function formatResultAsText(result: LookupActionResult): string {
     lines.push(`  Commit SHA: ${result.latestVersion.commitSha}`);
     lines.push(`  Immutable: ${result.latestVersion.immutable ? "Yes" : "No"}`);
     if (result.latestVersion.publishedAt) {
-      lines.push(`  Published: ${result.latestVersion.publishedAt}`);
+      const ageDays = getReleaseAgeDays(result.latestVersion.publishedAt);
+      const ageStr = ageDays !== null ? ` (${formatAge(ageDays)})` : "";
+      lines.push(`  Published: ${result.latestVersion.publishedAt}${ageStr}`);
     }
   }
 
-  if (result.requestedVersion && result.requestedVersion !== result.latestVersion) {
+  if (
+    result.requestedVersion && result.requestedVersion !== result.latestVersion
+  ) {
     lines.push("");
     lines.push(`Requested Version: ${result.requestedVersion.tag}`);
     if (result.resolvedFromPrefix) {
       lines.push(`  (resolved from version prefix)`);
     }
     lines.push(`  Commit SHA: ${result.requestedVersion.commitSha}`);
-    lines.push(`  Immutable: ${result.requestedVersion.immutable ? "Yes" : "No"}`);
+    lines.push(
+      `  Immutable: ${result.requestedVersion.immutable ? "Yes" : "No"}`,
+    );
   }
 
   lines.push("");
@@ -138,7 +178,7 @@ export function formatResultAsText(result: LookupActionResult): string {
  * Look up information about a GitHub Action
  */
 export async function lookupAction(
-  input: LookupActionInput
+  input: LookupActionInput,
 ): Promise<LookupActionResult> {
   const parsed = parseAction(input.action);
   // Create client with org context for token resolution
@@ -175,13 +215,13 @@ export async function lookupAction(
   try {
     const latestRelease = await client.getLatestRelease(
       parsed.owner,
-      parsed.repo
+      parsed.repo,
     );
     latestVersion = await releaseToVersionInfo(
       client,
       parsed.owner,
       parsed.repo,
-      latestRelease
+      latestRelease,
     );
   } catch (error) {
     // Repository might not use GitHub releases
@@ -197,13 +237,13 @@ export async function lookupAction(
       const release = await client.getReleaseByTag(
         parsed.owner,
         parsed.repo,
-        parsed.version
+        parsed.version,
       );
       requestedVersion = await releaseToVersionInfo(
         client,
         parsed.owner,
         parsed.repo,
-        release
+        release,
       );
     } catch (error) {
       // If exact match fails and it's a major version, try to find matching release
@@ -215,14 +255,14 @@ export async function lookupAction(
         const matchingRelease = await client.findReleaseByVersionPrefix(
           parsed.owner,
           parsed.repo,
-          parsed.version
+          parsed.version,
         );
         if (matchingRelease) {
           requestedVersion = await releaseToVersionInfo(
             client,
             parsed.owner,
             parsed.repo,
-            matchingRelease
+            matchingRelease,
           );
           resolvedFromPrefix = true;
         }
@@ -234,7 +274,7 @@ export async function lookupAction(
           const commitSha = await client.getCommitShaForTag(
             parsed.owner,
             parsed.repo,
-            parsed.version
+            parsed.version,
           );
           requestedVersion = {
             tag: parsed.version,
@@ -246,7 +286,7 @@ export async function lookupAction(
         } catch {
           // Tag doesn't exist
           throw new Error(
-            `Could not find version "${parsed.version}" for ${parsed.owner}/${parsed.repo}`
+            `Could not find version "${parsed.version}" for ${parsed.owner}/${parsed.repo}`,
           );
         }
       }
@@ -259,9 +299,7 @@ export async function lookupAction(
     allVersions = await Promise.all(
       releases
         .filter((r) => !r.draft)
-        .map((r) =>
-          releaseToVersionInfo(client, parsed.owner, parsed.repo, r)
-        )
+        .map((r) => releaseToVersionInfo(client, parsed.owner, parsed.repo, r)),
     );
   }
 
@@ -271,7 +309,7 @@ export async function lookupAction(
   if (!targetVersion) {
     throw new Error(
       `Could not find any releases for ${parsed.owner}/${parsed.repo}. ` +
-        `The repository may not use GitHub releases.`
+        `The repository may not use GitHub releases.`,
     );
   }
 
@@ -279,13 +317,13 @@ export async function lookupAction(
     parsed.owner,
     parsed.repo,
     targetVersion.commitSha,
-    targetVersion.tag
+    targetVersion.tag,
   );
 
   const securityNotes = generateSecurityNotes(
     targetVersion,
     resolvedFromPrefix,
-    parsed.version
+    parsed.version,
   );
 
   return {
