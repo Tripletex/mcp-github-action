@@ -8,10 +8,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
-import {
-  formatResultAsText,
-  lookupAction,
-} from "./src/tools/lookup-action.ts";
+import { formatResultAsText, lookupAction } from "./src/tools/lookup-action.ts";
 
 // Create the MCP server
 const server = new McpServer({
@@ -28,7 +25,7 @@ server.tool(
     action: z
       .string()
       .describe(
-        "Action reference, e.g., 'actions/checkout' or 'actions/checkout@v4'"
+        "Action reference, e.g., 'actions/checkout' or 'actions/checkout@v4'",
       ),
     include_all_versions: z
       .boolean()
@@ -52,8 +49,9 @@ server.tool(
         ],
       };
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Unknown error occurred";
+      const message = error instanceof Error
+        ? error.message
+        : "Unknown error occurred";
       return {
         content: [
           {
@@ -64,7 +62,7 @@ server.tool(
         isError: true,
       };
     }
-  }
+  },
 );
 
 // Start the server with stdio transport
