@@ -4,6 +4,7 @@
  * Supports org-specific tokens via environment variables:
  * - GITHUB_TOKEN_<ORG_NAME> for specific orgs (e.g., GITHUB_TOKEN_MY_ORG)
  * - GITHUB_TOKEN as fallback
+ * - gh CLI via `gh auth token` as final fallback
  *
  * Org names are normalized: hyphens converted to underscores, then uppercased
  * Example: "My-Org" -> GITHUB_TOKEN_MY_ORG
@@ -29,25 +30,81 @@ export class TokenResolver {
   }
 
   /**
+   * Try to get a token from gh CLI
+   * Returns undefined if gh is not available or auth token command fails
+   */
+  private async getGhCliToken(): Promise<string | undefined> {
+    try {
+      // Check if gh command exists
+      const checkCommand = new Deno.Command("gh", {
+        args: ["--version"],
+        stdout: "null",
+        stderr: "null",
+      });
+
+      const checkResult = await checkCommand.output();
+      if (!checkResult.success) {
+        return undefined;
+      }
+
+      // Try to get the auth token
+      const authCommand = new Deno.Command("gh", {
+        args: ["auth", "token"],
+        stdout: "piped",
+        stderr: "null",
+      });
+
+      const authResult = await authCommand.output();
+      if (!authResult.success) {
+        return undefined;
+      }
+
+      const token = new TextDecoder().decode(authResult.stdout).trim();
+      return token.length > 0 ? token : undefined;
+    } catch (_error) {
+      // gh command not found or other error
+      return undefined;
+    }
+  }
+
+  /**
    * Resolve the appropriate token for a given organization
    * Returns undefined if no token is found (will use unauthenticated requests)
+   *
+   * Resolution order:
+   * - For specific org: GITHUB_TOKEN_<ORG> -> falls back to default token
+   * - For default (org=""): GITHUB_TOKEN -> gh auth token
    */
-  resolveToken(org: string): string | undefined {
+  async resolveToken(org: string): Promise<string | undefined> {
     // Check cache first
     if (this.tokenCache.has(org)) {
       return this.tokenCache.get(org);
     }
 
-    // Try org-specific token first
-    const orgEnvVar = this.getEnvVarName(org);
-    let token = Deno.env.get(orgEnvVar);
+    let token: string | undefined;
 
-    // Fall back to default GITHUB_TOKEN
-    if (!token) {
-      token = Deno.env.get("GITHUB_TOKEN");
+    // Try org-specific token first if org is specified
+    if (org !== "") {
+      token = Deno.env.get(this.getEnvVarName(org));
     }
 
-    // Cache the result
+    // If no org-specific token, try default token sources
+    if (!token) {
+      // Check if default token is already cached
+      if (this.tokenCache.has("")) {
+        token = this.tokenCache.get("");
+      } else {
+        // Resolve and cache default token
+        token = Deno.env.get("GITHUB_TOKEN");
+        if (!token) {
+          token = await this.getGhCliToken();
+        }
+        // Cache default token for future use
+        this.tokenCache.set("", token);
+      }
+    }
+
+    // Cache the result for this org
     this.tokenCache.set(org, token);
 
     return token;

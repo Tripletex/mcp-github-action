@@ -16,23 +16,38 @@ const GITHUB_API_BASE = "https://api.github.com";
 
 export class GitHubClient {
   private token: string | undefined;
+  private tokenResolved = false;
+  private tokenPromise: Promise<void> | null = null;
   private rateLimitInfo: RateLimitInfo | null = null;
   private org: string | undefined;
 
   /**
    * Create a GitHub client
    * @param org - Organization name for token resolution (optional)
-   * @param token - Explicit token override (optional, bypasses resolver)
    */
-  constructor(org?: string, token?: string) {
+  constructor(org?: string) {
     this.org = org;
-    if (token) {
-      this.token = token;
-    } else if (org) {
-      this.token = tokenResolver.resolveToken(org);
-    } else {
-      this.token = Deno.env.get("GITHUB_TOKEN");
+  }
+
+  /**
+   * Ensure token is resolved before making requests
+   */
+  private async ensureToken(): Promise<void> {
+    if (this.tokenResolved) {
+      return;
     }
+
+    if (this.tokenPromise) {
+      return this.tokenPromise;
+    }
+
+    this.tokenPromise = (async () => {
+      this.token = await tokenResolver.resolveToken(this.org ?? "");
+      this.tokenResolved = true;
+      this.tokenPromise = null;
+    })();
+
+    return this.tokenPromise;
   }
 
   /**
@@ -84,6 +99,9 @@ export class GitHubClient {
   }
 
   private async fetch<T>(url: string): Promise<T> {
+    // Ensure token is resolved before making request
+    await this.ensureToken();
+
     const response = await fetch(url, {
       headers: this.getHeaders(),
     });
