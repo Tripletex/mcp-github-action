@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "github-actions": {
+      "command": "deno",
+      "args": [
+        "run",
+        "--allow-net",
+        "--allow-env",
+        "--allow-run=gh",
+        "./main.ts"
+      ],
+      "env": {
+        "MIN_RELEASE_AGE_DAYS": "7"
+      }
+    }
+  }
+}
