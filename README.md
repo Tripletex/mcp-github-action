@@ -37,6 +37,7 @@ Add to your Claude Desktop configuration (`claude_desktop_config.json`):
         "run",
         "--allow-net",
         "--allow-env",
+        "--allow-run=gh",
         "/path/to/mcp-github-actions/main.ts"
       ],
       "env": {
@@ -50,7 +51,7 @@ Add to your Claude Desktop configuration (`claude_desktop_config.json`):
 ### Setup with Claude Code CLI
 
 ```bash
-claude mcp add github-actions -- deno run --allow-net --allow-env /path/to/mcp-github-actions/main.ts
+claude mcp add github-actions -- deno run --allow-net --allow-env --allow-run=gh /path/to/mcp-github-actions/main.ts
 ```
 
 ### Setup with Docker
@@ -90,24 +91,6 @@ docker run --rm -i -e GITHUB_TOKEN ghcr.io/tripletex/mcp-github-action:latest
     }
   }
 }
-```
-
-**MCP Gateway configuration:**
-
-```yaml
-mcp_services:
-  - name: "github-actions"
-    alias: "github-actions"
-    type: "stdio"
-    command:
-      - docker
-      - run
-      - --rm
-      - -i
-      - -e
-      - GITHUB_TOKEN
-      - ghcr.io/tripletex/mcp-github-action:latest
-    timeout: 30
 ```
 
 ## Usage
@@ -150,18 +133,44 @@ Security Notes:
 
 ## Authentication
 
-### Without Token (Default)
+The service supports multiple authentication methods, checked in the following
+order:
+
+1. **Org-specific tokens** (`GITHUB_TOKEN_<ORG>`) - For multi-org scenarios
+2. **Environment variable** (`GITHUB_TOKEN`) - Explicit token configuration
+3. **GitHub CLI** (`gh auth token`) - Automatic token from logged-in `gh` CLI
+4. **Unauthenticated** - Public repositories only with rate limits
+
+### Without Token (Unauthenticated)
 
 - Works for public repositories only
 - Rate limit: 60 requests/hour
+- No setup required
 
-### With Token (Recommended)
+### With GitHub CLI (Recommended for Development)
+
+If you have the [GitHub CLI](https://cli.github.com/) installed and
+authenticated:
+
+```bash
+gh auth login
+```
+
+The service will automatically use your `gh` CLI token when no explicit token is
+configured. This is convenient for local development and doesn't require
+managing separate tokens.
+
+**Permissions note:** The service needs `--allow-run=gh` permission to execute
+the `gh` command.
+
+### With Environment Token
 
 Set the `GITHUB_TOKEN` environment variable:
 
 - Works for **private repositories**
 - Rate limit: 5,000 requests/hour
 - Required for organization private actions
+- Recommended for production deployments
 
 ### Multi-Organization Support
 
@@ -180,7 +189,8 @@ GITHUB_TOKEN=ghp_zzz...                    # Fallback for public repos
 
 1. Org-specific token (`GITHUB_TOKEN_<ORG>`)
 2. Fallback token (`GITHUB_TOKEN`)
-3. Unauthenticated (public repos only)
+3. GitHub CLI token (`gh auth token`)
+4. Unauthenticated (public repos only)
 
 **Supported token types and required permissions:**
 
@@ -205,6 +215,7 @@ GITHUB_TOKEN=ghp_zzz...                    # Fallback for public repos
         "run",
         "--allow-net",
         "--allow-env",
+        "--allow-run=gh",
         "/path/to/mcp-github-actions/main.ts"
       ],
       "env": {
@@ -264,6 +275,7 @@ the latest release's age.
         "run",
         "--allow-net",
         "--allow-env",
+        "--allow-run=gh",
         "/path/to/mcp-github-actions/main.ts"
       ],
       "env": {
