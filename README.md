@@ -7,6 +7,8 @@ reference GitHub Actions by providing:
 - Commit SHA retrieval for specific version tags
 - Immutability status checking for releases
 - Ready-to-use SHA-pinned references
+- **Workflow analysis** with update level detection (major/minor/patch)
+- **Safe update suggestions** that avoid breaking changes
 
 ## Why Use This?
 
@@ -103,6 +105,9 @@ Once configured, ask Claude to look up GitHub Actions:
 - "Get the secure reference for actions/setup-node@v4"
 - "Check if actions/cache@v4.2.0 is immutable"
 - "List all versions of actions/upload-artifact"
+- "Analyze my workflow file for outdated actions"
+- "Suggest safe updates for my CI workflow"
+- "What's the latest v4.x version of actions/checkout?"
 
 ## Tool: `lookup_action`
 
@@ -118,17 +123,129 @@ Once configured, ask Claude to look up GitHub Actions:
 ```
 Action: actions/checkout
 
-Latest Version: v4.2.2
+Latest Version: v6.0.1
+  Commit SHA: 8e8c483db84b4bee98b60c0593521ed34d9990e8
+  Immutable: No
+  Published: 2025-12-02T16:38:59Z
+
+Recommended Usage (SHA-pinned):
+  uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8 # v6.0.1
+
+Security Notes:
+  - WARNING: This release is NOT immutable. The tag could potentially be moved to a different commit.
+  - Using the SHA-pinned reference provides protection against tag tampering.
+  - SHA-pinned references prevent supply chain attacks by ensuring you always use the exact same code.
+```
+
+## Tool: `analyze_workflow`
+
+Analyze a GitHub Actions workflow file and show version status for all actions.
+Reports current vs latest versions, update levels (major/minor/patch), and risk
+assessment.
+
+### Parameters
+
+| Parameter          | Type    | Required | Description                                          |
+| ------------------ | ------- | -------- | ---------------------------------------------------- |
+| `workflow_content` | string  | Yes      | The workflow YAML content to analyze                 |
+| `only_updates`     | boolean | No       | Only show actions that need updates (default: false) |
+
+### Example Output
+
+```
+## Summary
+Total actions: 6
+Up to date: 1
+Major updates available: 2 ⚠️
+Minor updates available: 2
+Patch updates available: 1
+
+## Actions
+
+| Action | Current | Latest | Update | Risk |
+|--------|---------|--------|--------|------|
+| actions/checkout | v4.2.2 | v6.0.1 | ⚠️ Major | 🔴 High |
+| actions/setup-node | v4.1.0 | v6.2.0 | ⚠️ Major | 🔴 High |
+| docker/login-action | v3.3.0 | v3.6.0 | 📦 Minor | 🟡 Medium |
+| docker/build-push-action | v6.9.0 | v6.18.0 | 📦 Minor | 🟡 Medium |
+| appleboy/ssh-action | v1.2.0 | v1.2.4 | 🔧 Patch | 🟢 Low |
+
+## Safe Updates (Minor/Patch)
+...
+
+## Major Updates (Review Required)
+...
+```
+
+## Tool: `suggest_updates`
+
+Suggest safe updates for GitHub Actions in a workflow. Returns only safe updates
+(minor/patch) and suggestions to stay current within major versions.
+
+### Parameters
+
+| Parameter          | Type   | Required | Description                                                                  |
+| ------------------ | ------ | -------- | ---------------------------------------------------------------------------- |
+| `workflow_content` | string | Yes      | The workflow YAML content to analyze                                         |
+| `risk_tolerance`   | string | No       | `"patch"` = only patches, `"minor"` = patch + minor (default), `"all"` = all |
+
+### Example Output
+
+```
+## Summary
+Total actions analyzed: 6
+Already up to date: 1
+Safe updates available: 3
+Actions with major updates: 2 (staying on current major)
+
+## Safe Updates
+These updates are safe to apply:
+
+### 📦 docker/login-action: v3.3.0 → v3.6.0
+Minor version update - new features, backwards compatible
+
+uses: docker/login-action@9780b0c442fbb1117ed29e0efdff1e18412f7567 # v3.6.0
+
+### 🔧 appleboy/ssh-action: v1.2.0 → v1.2.4
+Patch version update - bug fixes only
+
+uses: appleboy/ssh-action@2ead5e36573714d0d3cfcbac3646c3e0f09ec849 # v1.2.4
+
+## Updates Within Current Major
+These actions have major updates available, but you can safely update within your current major version:
+
+### actions/checkout: v4.2.2 → v4.2.2
+Safe update within v4.x (latest overall is v6.0.1)
+
+uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+```
+
+## Tool: `get_latest_in_major`
+
+Get the latest version of a GitHub Action within the same major version. Useful
+for safe updates that avoid breaking changes.
+
+### Parameters
+
+| Parameter | Type   | Required | Description                                                              |
+| --------- | ------ | -------- | ------------------------------------------------------------------------ |
+| `action`  | string | Yes      | Action reference with version (e.g., `actions/checkout@v4` or `@v4.1.0`) |
+
+### Example Output
+
+```
+Action: actions/checkout
+Current Version: v4
+Major Version: v4
+
+Latest in v4.x: v4.2.2
   Commit SHA: 11bd71901bbe5b1630ceea73d27597364c9af683
   Immutable: Yes
-  Published: 2024-10-23T14:05:06Z
+
+Note: Latest overall is v6.0.1
 
 Recommended Usage (SHA-pinned):
   uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
-
-Security Notes:
-  - This release is immutable - the tag and assets are protected from modification.
-  - SHA-pinned references prevent supply chain attacks by ensuring you always use the exact same code.
 ```
 
 ## Authentication
@@ -252,10 +369,10 @@ When set, the service will:
 ```
 Action: actions/checkout
 
-Latest Version: v4.2.1
-  Commit SHA: abc123...
-  Immutable: Yes
-  Published: 2024-10-15T10:00:00Z (7 days ago)
+Latest Version: v6.0.1
+  Commit SHA: 8e8c483db84b4bee98b60c0593521ed34d9990e8
+  Immutable: No
+  Published: 2025-12-02T16:38:59Z (52 days ago)
 
 Security Notes:
   - Minimum release age filter active: only considering releases at least 5 days old.
