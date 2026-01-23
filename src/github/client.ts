@@ -38,7 +38,7 @@ export class GitHubClient {
     }
 
     if (this.tokenPromise) {
-      return this.tokenPromise;
+      return await this.tokenPromise;
     }
 
     this.tokenPromise = (async () => {
