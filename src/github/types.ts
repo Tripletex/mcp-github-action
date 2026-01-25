@@ -12,6 +12,8 @@ export interface GitHubRelease {
   created_at: string;
   published_at: string | null;
   html_url: string;
+  /** Release notes in markdown format */
+  body?: string | null;
   /** Whether or not the release is immutable (protected from modification) */
   immutable?: boolean;
   assets: GitHubAsset[];
@@ -63,4 +65,19 @@ export interface RateLimitInfo {
   remaining: number;
   reset: number;
   used: number;
+}
+
+export interface GitHubContent {
+  name: string;
+  path: string;
+  sha: string;
+  size: number;
+  type: "file" | "dir";
+  content?: string; // base64 encoded
+  encoding?: string; // "base64"
+  download_url: string | null;
+}
+
+export interface GitHubRepository {
+  default_branch: string;
 }

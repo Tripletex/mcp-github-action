@@ -9,6 +9,9 @@ reference GitHub Actions by providing:
 - Ready-to-use SHA-pinned references
 - **Workflow analysis** with update level detection (major/minor/patch)
 - **Safe update suggestions** that avoid breaking changes
+- **Documentation retrieval** for actions at specific versions
+- **Version comparison** to identify changes and breaking updates between
+  releases
 
 ## Why Use This?
 
@@ -108,6 +111,8 @@ Once configured, ask Claude to look up GitHub Actions:
 - "Analyze my workflow file for outdated actions"
 - "Suggest safe updates for my CI workflow"
 - "What's the latest v4.x version of actions/checkout?"
+- "Show me the documentation for actions/checkout@v4"
+- "Compare changes between actions/setup-node@v4.0.0 and v6.0.0"
 
 ## Tool: `lookup_action`
 
@@ -246,6 +251,72 @@ Note: Latest overall is v6.0.1
 
 Recommended Usage (SHA-pinned):
   uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+```
+
+## Tool: `get_action_documentation`
+
+Get README documentation for a GitHub Action at a specific version. Useful for
+understanding how to use an action at a particular release.
+
+### Parameters
+
+| Parameter | Type   | Required | Description                                                                   |
+| --------- | ------ | -------- | ----------------------------------------------------------------------------- |
+| `action`  | string | Yes      | Action reference (e.g., `actions/checkout` or `actions/checkout@v4`)          |
+| `ref`     | string | No       | Optional ref override (tag/branch/commit). Defaults to version or main branch |
+
+### Example Output
+
+```
+# actions/checkout Documentation
+Ref: v4.2.0
+
+---
+
+[Full README markdown content for the action at the specified version]
+```
+
+## Tool: `compare_action_versions`
+
+Compare changes between two versions of a GitHub Action. Shows release notes and
+identifies version update levels to help with upgrade decisions.
+
+### Parameters
+
+| Parameter        | Type   | Required | Description                                                   |
+| ---------------- | ------ | -------- | ------------------------------------------------------------- |
+| `action`         | string | Yes      | Action with current version (e.g., `actions/checkout@v4.0.2`) |
+| `target_version` | string | No       | Target version (defaults to latest)                           |
+
+### Example Output
+
+```
+# Version Comparison: actions/checkout
+
+From: v4.0.0
+To: v4.2.0
+
+## Summary
+- Total releases: 3
+- Major updates: 0
+- Minor updates: 2
+- Patch updates: 1
+
+## Release History (chronological)
+
+### v4.1.0 (2025-02-15) - Minor Update
+Added support for sparse checkouts and improved performance.
+
+### v4.1.1 (2025-02-20) - Patch Update
+Fixed bug with submodule handling on Windows.
+
+### v4.2.0 (2025-03-01) - Minor Update
+Added new input parameter for custom checkout paths.
+
+---
+
+Note: Major version updates (marked with ⚠️) may contain breaking changes.
+Review the release notes above to understand the impact of each update.
 ```
 
 ## Authentication

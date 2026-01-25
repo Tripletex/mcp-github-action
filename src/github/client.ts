@@ -6,6 +6,7 @@ import type {
   GitHubError,
   GitHubRef,
   GitHubRelease,
+  GitHubRepository,
   GitHubTag,
   RateLimitInfo,
 } from "./types.ts";
@@ -322,5 +323,73 @@ export class GitHubClient {
       });
 
     return matchingReleases[0] || null;
+  }
+
+  /**
+   * Get repository information including default branch
+   */
+  async getRepository(owner: string, repo: string): Promise<GitHubRepository> {
+    const url = `${GITHUB_API_BASE}/repos/${owner}/${repo}`;
+    return await this.fetch<GitHubRepository>(url);
+  }
+
+  /**
+   * Get repository default branch name
+   */
+  async getDefaultBranch(owner: string, repo: string): Promise<string> {
+    const repository = await this.getRepository(owner, repo);
+    return repository.default_branch;
+  }
+
+  /**
+   * Get file content from repository at specific ref
+   * @param owner - Repository owner
+   * @param repo - Repository name
+   * @param path - File path (e.g., "README.md")
+   * @param ref - Branch, tag, or commit SHA (optional, defaults to repo default branch)
+   */
+  async getFileContent(
+    owner: string,
+    repo: string,
+    path: string,
+    ref?: string,
+  ): Promise<string> {
+    // Ensure token is resolved before making request
+    await this.ensureToken();
+
+    // Build URL with optional ref parameter
+    let url = `${GITHUB_API_BASE}/repos/${owner}/${repo}/contents/${path}`;
+    if (ref) {
+      url += `?ref=${encodeURIComponent(ref)}`;
+    }
+
+    // Use Accept header to get raw content instead of JSON
+    const response = await fetch(url, {
+      headers: {
+        ...this.getHeaders(),
+        Accept: "application/vnd.github.raw",
+      },
+    });
+
+    this.updateRateLimitInfo(response);
+
+    if (!response.ok) {
+      const error: GitHubError = await response.json();
+      if (response.status === 404) {
+        throw new Error(
+          `File not found: ${path}${ref ? ` at ref ${ref}` : ""}`,
+        );
+      }
+      if (response.status === 403 && this.rateLimitInfo?.remaining === 0) {
+        const resetDate = new Date(this.rateLimitInfo.reset * 1000);
+        throw new Error(
+          `Rate limit exceeded. Resets at ${resetDate.toISOString()}. ` +
+            `Consider setting GITHUB_TOKEN for higher limits.`,
+        );
+      }
+      throw new Error(`GitHub API error: ${error.message}`);
+    }
+
+    return response.text();
   }
 }
