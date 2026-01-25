@@ -19,6 +19,14 @@ import {
   getLatestInMajorVersion,
   suggestUpdates,
 } from "./src/tools/suggest-updates.ts";
+import {
+  formatDocumentationResultAsText,
+  getActionDocumentation,
+} from "./src/tools/get-action-documentation.ts";
+import {
+  compareActionVersions,
+  formatCompareResultAsText,
+} from "./src/tools/compare-action-versions.ts";
 
 // Create the MCP server
 const server = new McpServer({
@@ -187,6 +195,98 @@ server.tool(
     try {
       const result = await getLatestInMajorVersion({ action });
       const text = formatLatestInMajorAsText(result);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text,
+          },
+        ],
+      };
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "Unknown error occurred";
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Register the get_action_documentation tool
+server.tool(
+  "get_action_documentation",
+  "Get README documentation for a GitHub Action at a specific version. " +
+    "Useful for understanding how to use an action at a particular release.",
+  {
+    action: z
+      .string()
+      .describe(
+        "Action reference (e.g., 'actions/checkout' or 'actions/checkout@v4')",
+      ),
+    ref: z
+      .string()
+      .optional()
+      .describe("Optional ref override (tag/branch/commit)"),
+  },
+  async ({ action, ref }) => {
+    try {
+      const result = await getActionDocumentation({ action, ref });
+      const text = formatDocumentationResultAsText(result);
+
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text,
+          },
+        ],
+      };
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "Unknown error occurred";
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: `Error: ${message}`,
+          },
+        ],
+        isError: true,
+      };
+    }
+  },
+);
+
+// Register the compare_action_versions tool
+server.tool(
+  "compare_action_versions",
+  "Compare changes between two versions of a GitHub Action. " +
+    "Shows release notes and identifies version update levels to help with upgrade decisions.",
+  {
+    action: z
+      .string()
+      .describe(
+        "Action with current version (e.g., 'actions/checkout@v4.0.2')",
+      ),
+    target_version: z
+      .string()
+      .optional()
+      .describe("Target version (defaults to latest)"),
+  },
+  async ({ action, target_version }) => {
+    try {
+      const result = await compareActionVersions({ action, target_version });
+      const text = formatCompareResultAsText(result);
 
       return {
         content: [
