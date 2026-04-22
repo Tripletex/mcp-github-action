@@ -1,5 +1,16 @@
 # MCP GitHub Actions
 
+> ## ⚠️ This repository has moved
+>
+> Development has been transferred to
+> **[Tripletex/mcp-dependency-version](https://github.com/Tripletex/mcp-dependency-version)**.
+>
+> This repository is **archived and no longer maintained**. Please update your
+> references, issues, and pull requests to the new location. All future
+> releases, fixes, and documentation will be published there.
+
+---
+
 A Deno-based MCP (Model Context Protocol) service that helps you securely
 reference GitHub Actions by providing:
 
